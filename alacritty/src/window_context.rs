@@ -498,6 +498,11 @@ impl WindowContext {
         self.display.window.id()
     }
 
+    /// Close the window by terminating its terminal.
+    pub fn close(&self) {
+        self.terminal.lock().exit();
+    }
+
     /// Write the ref test results to the disk.
     pub fn write_ref_test_results(&self) {
         // Dump grid state.

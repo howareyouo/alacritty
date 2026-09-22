@@ -237,6 +237,31 @@ impl Window {
         self.window.set_visible(visibility);
     }
 
+    /// Whether the window is currently minimized.
+    #[cfg(windows)]
+    #[inline]
+    pub fn is_minimized(&self) -> bool {
+        self.window.is_minimized() == Some(true)
+    }
+
+    /// Whether the window is currently visible.
+    #[cfg(windows)]
+    #[inline]
+    pub fn visible(&self) -> bool {
+        self.window.is_visible().unwrap_or(false)
+    }
+
+    /// Restore a window hidden to the tray: unminimize, show and focus it.
+    #[cfg(windows)]
+    #[inline]
+    pub fn restore_from_tray(&self) {
+        if self.window.is_minimized() == Some(true) {
+            self.window.set_minimized(false);
+        }
+        self.window.set_visible(true);
+        self.window.focus_window();
+    }
+
     #[cfg(target_os = "macos")]
     #[inline]
     pub fn focus_window(&self) {

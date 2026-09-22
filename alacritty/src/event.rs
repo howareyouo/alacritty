@@ -63,6 +63,8 @@ use crate::message_bar::{Message, MessageBuffer};
 #[cfg(unix)]
 use crate::polling::ipc::{self, SocketReply};
 use crate::scheduler::{Scheduler, TimerId, Topic};
+#[cfg(windows)]
+use crate::tray::{TrayAction, TrayIcon};
 use crate::window_context::WindowContext;
 
 /// Duration after the last user input until an unlimited search is performed.
@@ -94,6 +96,12 @@ pub struct Processor {
     windows: HashMap<WindowId, WindowContext, RandomState>,
     proxy: EventLoopProxy<Event>,
     gl_config: Option<GlutinConfig>,
+    /// Tray icon kept alive for the entire lifetime of the event loop.
+    #[cfg(windows)]
+    tray: Option<TrayIcon>,
+    /// Whether a quit was requested through the tray icon.
+    #[cfg(windows)]
+    quit_requested: bool,
     #[cfg(unix)]
     global_ipc_options: ParsedOptions,
     cli_options: CliOptions,
@@ -135,12 +143,26 @@ impl Processor {
             proxy,
             scheduler,
             gl_config: None,
+            #[cfg(windows)]
+            tray: None,
+            #[cfg(windows)]
+            quit_requested: false,
             config: Rc::new(config),
             clipboard,
             windows: Default::default(),
             #[cfg(unix)]
             global_ipc_options: Default::default(),
             config_monitor,
+        }
+    }
+
+    /// Create the tray icon if `window.minimize_to_tray` is enabled.
+    ///
+    /// The tray is only created once; config reloads may enable it later on.
+    #[cfg(windows)]
+    fn ensure_tray(&mut self) {
+        if self.tray.is_none() && self.config.window.minimize_to_tray {
+            self.tray = crate::tray::create_tray(self.proxy.clone());
         }
     }
 
@@ -242,6 +264,10 @@ impl ApplicationHandler<Event> for Processor {
                 return;
             }
         }
+
+        // Create the tray icon if requested by the config.
+        #[cfg(windows)]
+        self.ensure_tray();
 
         info!("Initialisation complete");
     }
@@ -368,6 +394,10 @@ impl ApplicationHandler<Event> for Processor {
                         window_context.update_config(self.config.clone());
                     }
                 }
+
+                // Create the tray if the config just enabled it.
+                #[cfg(windows)]
+                self.ensure_tray();
             },
             // Create a new terminal window.
             (EventType::CreateWindow(options), _) => {
@@ -388,10 +418,39 @@ impl ApplicationHandler<Event> for Processor {
                 } else if let Err(err) = self.create_window(event_loop, options) {
                     error!("Could not open window: {err:?}");
                 }
+
+                // Create the tray if the config requested it.
+                #[cfg(windows)]
+                self.ensure_tray();
             },
             // Shutdown all windows.
             #[cfg(unix)]
             (EventType::Shutdown, _) => event_loop.exit(),
+            // Restore all windows hidden to the tray.
+            #[cfg(windows)]
+            (EventType::Tray(TrayAction::Show), _) => {
+                for window_context in self.windows.values_mut() {
+                    if !window_context.display.window.visible() {
+                        window_context.display.window.restore_from_tray();
+                    }
+                }
+            },
+            // Quit from the tray: close all windows and shut down.
+            #[cfg(windows)]
+            (EventType::Tray(TrayAction::Quit), _) => {
+                self.quit_requested = true;
+
+                // There might be no windows at all, e.g. in daemon mode.
+                if self.windows.is_empty() {
+                    event_loop.exit();
+                    return;
+                }
+
+                for window_context in self.windows.values_mut() {
+                    window_context.display.window.hold = false;
+                    window_context.close();
+                }
+            },
             // Process events affecting all windows.
             (payload, None) => {
                 let event = WinitEvent::UserEvent(Event::new(payload, None));
@@ -430,7 +489,13 @@ impl ApplicationHandler<Event> for Processor {
                 self.scheduler.unschedule_window(window_context.id());
 
                 // Shutdown if no more terminals are open.
-                if self.windows.is_empty() && !self.cli_options.daemon {
+                //
+                // On Windows a quit requested through the tray icon exits even in daemon mode.
+                #[cfg(windows)]
+                let quit_requested = self.quit_requested;
+                #[cfg(not(windows))]
+                let quit_requested = false;
+                if self.windows.is_empty() && (!self.cli_options.daemon || quit_requested) {
                     // Write ref tests of last window to disk.
                     if self.config.debug.ref_test {
                         window_context.write_ref_test_results();
@@ -555,6 +620,9 @@ pub enum EventType {
     SearchNext,
     #[cfg(unix)]
     Shutdown,
+    /// Tray icon actions (Windows only).
+    #[cfg(windows)]
+    Tray(TrayAction),
     Frame,
 }
 
@@ -1930,6 +1998,9 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
                 },
                 #[cfg(unix)]
                 EventType::IpcConfig(_) | EventType::IpcGetConfig(..) | EventType::Shutdown => (),
+                // Tray events are handled globally in `Processor::user_event`.
+                #[cfg(windows)]
+                EventType::Tray(_) => (),
                 EventType::Message(_)
                 | EventType::ConfigReload(_)
                 | EventType::CreateWindow(_)
@@ -1960,6 +2031,15 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
                         // and the ConPTY. A 0x0 resize will also occur when the window is minimized
                         // on Windows.
                         if size.width == 0 || size.height == 0 {
+                            // When minimizing to the tray is enabled, hide the window instead of
+                            // keeping it minimized in the taskbar.
+                            #[cfg(windows)]
+                            if self.ctx.config.window.minimize_to_tray
+                                && self.ctx.window().is_minimized()
+                            {
+                                self.ctx.window().set_visible(false);
+                            }
+
                             return;
                         }
 

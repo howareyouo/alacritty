@@ -46,6 +46,8 @@ mod polling;
 mod renderer;
 mod scheduler;
 mod string;
+#[cfg(windows)]
+mod tray;
 mod window_context;
 
 mod gl {

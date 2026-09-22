@@ -142,6 +142,14 @@ This section documents the *[window]* table of the configuration file.
 
 	Default: _false_
 
+*minimize_to_tray* = _true_ | _false_ # _(Windows only)_
+
+	Hide the window to the system tray instead of minimizing it to the
+	taskbar. While enabled, clicking the minimize button hides the window,
+	and the tray icon can be used to restore it or quit the application.
+
+	Default: _false_
+
 *startup_mode* = _"Windowed"_ | _"Maximized"_ | _"Fullscreen"_ | _"SimpleFullscreen"_
 
 	Startup mode (changes require restart)

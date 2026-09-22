@@ -48,6 +48,12 @@ pub struct WindowConfig {
     /// Request blur behind the window.
     pub blur: bool,
 
+    /// Hide the window to the system tray instead of minimizing it.
+    ///
+    /// While enabled, clicking the minimize button hides the window and an
+    /// icon in the system tray is used to restore it. (Windows only)
+    pub minimize_to_tray: bool,
+
     /// Controls which `Option` key should be treated as `Alt`.
     option_as_alt: OptionAsAlt,
 
@@ -72,6 +78,7 @@ impl Default for WindowConfig {
         Self {
             dynamic_title: true,
             blur: Default::default(),
+            minimize_to_tray: false,
             embed: Default::default(),
             padding: Default::default(),
             opacity: Default::default(),
