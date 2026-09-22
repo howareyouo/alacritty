@@ -178,10 +178,9 @@ impl TerminalOptions {
     /// Override the [`PtyOptions`]'s fields with the [`TerminalOptions`].
     pub fn override_pty_config(&self, pty_config: &mut PtyOptions) {
         if let Some(working_directory) = &self.working_directory {
-            if working_directory.is_dir() {
-                pty_config.working_directory = Some(working_directory.to_owned());
-            } else {
-                error!("Invalid working directory: {working_directory:?}");
+            match resolve_working_directory(working_directory) {
+                Some(dir) => pty_config.working_directory = Some(dir),
+                None => error!("Invalid working directory: {working_directory:?}"),
             }
         }
 
@@ -191,6 +190,35 @@ impl TerminalOptions {
 
         pty_config.drain_on_exit |= self.hold;
     }
+}
+
+/// Resolve a working directory, handling Windows MSVCRT command-line escaping.
+///
+/// On Windows, paths ending with a backslash (e.g. drive roots like `G:\`)
+/// lose their closing quote to MSVCRT escaping: `"G:\"` is parsed as `G:"`.
+/// This function tries to recover such paths by replacing the trailing
+/// quote with a backslash.
+fn resolve_working_directory(path: &PathBuf) -> Option<PathBuf> {
+    if path.is_dir() {
+        return Some(path.clone());
+    }
+
+    #[cfg(windows)]
+    {
+        let path_str = path.to_string_lossy();
+        if let Some(stripped) = path_str.strip_suffix('"') {
+            let fixed = PathBuf::from(format!("{stripped}\\"));
+            if fixed.is_dir() {
+                return Some(fixed);
+            }
+        }
+    }
+
+    // Suppress unused variable warning on non-Windows.
+    #[cfg(not(windows))]
+    let _ = path;
+
+    None
 }
 
 impl From<TerminalOptions> for PtyOptions {
