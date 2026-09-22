@@ -1,7 +1,7 @@
 use std::cmp::max;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use alacritty_config::SerdeReplace;
@@ -198,9 +198,9 @@ impl TerminalOptions {
 /// lose their closing quote to MSVCRT escaping: `"G:\"` is parsed as `G:"`.
 /// This function tries to recover such paths by replacing the trailing
 /// quote with a backslash.
-fn resolve_working_directory(path: &PathBuf) -> Option<PathBuf> {
+fn resolve_working_directory(path: &Path) -> Option<PathBuf> {
     if path.is_dir() {
-        return Some(path.clone());
+        return Some(path.to_path_buf());
     }
 
     #[cfg(windows)]
@@ -213,10 +213,6 @@ fn resolve_working_directory(path: &PathBuf) -> Option<PathBuf> {
             }
         }
     }
-
-    // Suppress unused variable warning on non-Windows.
-    #[cfg(not(windows))]
-    let _ = path;
 
     None
 }
