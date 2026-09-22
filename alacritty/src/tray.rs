@@ -9,7 +9,7 @@ use std::sync::Mutex;
 
 use log::warn;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
-use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
+use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use winit::event_loop::EventLoopProxy;
 
 use crate::event::{Event, EventType};
@@ -70,7 +70,7 @@ pub fn create_tray(proxy: EventLoopProxy<Event>) -> Option<TrayIcon> {
 
     // Dispatch the tray menu actions through the event loop as well.
     let menu_proxy = Mutex::new(proxy);
-    MenuEvent::set_event_handler(Some(move |event| {
+    MenuEvent::set_event_handler(Some(Box::new(move |event: MenuEvent| {
         let action = match event.id.as_ref() {
             SHOW_MENU_ID => TrayAction::Show,
             QUIT_MENU_ID => TrayAction::Quit,
@@ -80,7 +80,7 @@ pub fn create_tray(proxy: EventLoopProxy<Event>) -> Option<TrayIcon> {
             .lock()
             .unwrap()
             .send_event(Event::new(EventType::Tray(action), None));
-    }));
+    })));
 
     match TrayIconBuilder::new()
         .with_menu(Box::new(menu))
@@ -103,7 +103,7 @@ fn load_icon() -> Result<Icon, Box<dyn std::error::Error>> {
 
     // The embedded logo is 16 bits per channel; expand it to 8-bit RGBA.
     let mut decoder = png::Decoder::new(Cursor::new(TRAY_ICON));
-    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::SCALE_16);
+    decoder.set_transformations(png::Transformations::normalize_to_color8());
     let mut reader = decoder.read_info()?;
     let mut buf = vec![0; reader.output_buffer_size()];
     let info = reader.next_frame(&mut buf)?;
