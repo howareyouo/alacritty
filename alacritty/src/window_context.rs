@@ -499,6 +499,7 @@ impl WindowContext {
     }
 
     /// Close the window by terminating its terminal.
+    #[cfg(windows)]
     pub fn close(&self) {
         self.terminal.lock().exit();
     }
