@@ -108,6 +108,6 @@ fn load_icon() -> Result<Icon, Box<dyn std::error::Error>> {
     let mut buf = vec![0; reader.output_buffer_size()];
     let info = reader.next_frame(&mut buf)?;
 
-    let data_len = info.line_size as usize * info.height as usize;
+    let data_len = info.line_size * info.height as usize;
     Ok(Icon::from_rgba(buf[..data_len].to_vec(), info.width, info.height)?)
 }
