@@ -127,8 +127,8 @@ fn config_deserialize() {
     let mut error_logs = logger.error_logs.lock().unwrap();
     error_logs.sort_unstable();
     assert_eq!(error_logs.as_slice(), [
-        "Config error: enom_error: unknown variant `HugaBuga`, expected one of `One`, `Two`, \
-         `Three`",
+        "Config error: enom_error: unknown variant `HugaBuga`, expected one of `one`, `two`, \
+         `three`",
         "Config error: field1: invalid type: string \"testing\", expected usize",
     ]);
     let mut warn_logs = logger.warn_logs.lock().unwrap();
@@ -230,6 +230,28 @@ fn replace_flatten() {
     test.replace(value).unwrap();
 
     assert_eq!(test.flatten.flatty, 7);
+}
+
+#[test]
+fn replace_mixed_flatten() {
+    let mut test = Test::default();
+
+    // Replace a regular field and a flattened field in one pass.
+    let value = toml::from_str("field3=9\nflatty=7").unwrap();
+    test.replace(value).unwrap();
+
+    assert_eq!(test.field3, Some(9));
+    assert_eq!(test.flatten.flatty, 7);
+}
+
+#[test]
+fn replace_skipped_field() {
+    let mut test = Test::default();
+
+    // Skipped fields are not part of the configuration, just like for
+    // deserialization.
+    let value = toml::from_str("[nesting]\nfield3=9").unwrap();
+    test.replace(value).unwrap_err();
 }
 
 #[test]

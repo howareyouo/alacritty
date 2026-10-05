@@ -412,7 +412,7 @@ impl Display {
         let rasterizer = Rasterizer::new()?;
 
         let font_size = config.font.size().scale(scale_factor);
-        debug!("Loading \"{}\" font", &config.font.normal().family);
+        debug!("Loading \"{}\" font", config.font.normal().family);
         let font = config.font.clone().with_size(font_size);
         let mut glyph_cache = GlyphCache::new(rasterizer, &font)?;
 
@@ -781,8 +781,10 @@ impl Display {
         search_state: &mut SearchState,
     ) {
         // Collect renderable content before the terminal is dropped.
+        let columns = self.size_info.columns();
+        let screen_lines = self.size_info.screen_lines();
         let mut content = RenderableContent::new(config, self, &terminal, search_state);
-        let mut grid_cells = Vec::new();
+        let mut grid_cells = Vec::with_capacity(columns * screen_lines);
         for cell in &mut content {
             grid_cells.push(cell);
         }

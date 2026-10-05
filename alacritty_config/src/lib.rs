@@ -52,6 +52,14 @@ impl<'de, T: Deserialize<'de>> SerdeReplace for Vec<T> {
 
 impl<'de, T: SerdeReplace + Deserialize<'de>> SerdeReplace for Option<T> {
     fn replace(&mut self, value: Value) -> Result<(), Box<dyn Error>> {
+        // Reset the field to `None` on the "none" sentinel, matching the
+        // deserialization behavior for `Option` fields.
+        if value.as_str().is_some_and(|s| s.eq_ignore_ascii_case("none")) {
+            *self = None;
+
+            return Ok(());
+        }
+
         match self {
             Some(inner) => inner.replace(value),
             None => replace_simple(self, value),
@@ -97,5 +105,11 @@ mod tests {
         SerdeReplace::replace(&mut subject, value).unwrap();
 
         assert_eq!(subject, Some(ReplaceOption { a: 1, b: 2 }));
+
+        // Reset to `None` using the "none" sentinel.
+        let value: Value = toml::from_str("\"none\"").unwrap();
+        SerdeReplace::replace(&mut subject, value).unwrap();
+
+        assert_eq!(subject, None);
     }
 }
