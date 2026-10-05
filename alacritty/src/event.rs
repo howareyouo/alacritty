@@ -158,7 +158,9 @@ impl Processor {
 
     /// Create the tray icon if `window.minimize_to_tray` is enabled.
     ///
-    /// The tray is only created once; config reloads may enable it later on.
+    /// The tray is created lazily when a window is first minimized to it, so
+    /// that no icon is shown until hiding a window is actually requested. It
+    /// is only created once and stays alive afterwards.
     #[cfg(windows)]
     fn ensure_tray(&mut self) {
         if self.tray.is_none() && self.config.window.minimize_to_tray {
@@ -265,10 +267,6 @@ impl ApplicationHandler<Event> for Processor {
             }
         }
 
-        // Create the tray icon if requested by the config.
-        #[cfg(windows)]
-        self.ensure_tray();
-
         info!("Initialisation complete");
     }
 
@@ -305,6 +303,15 @@ impl ApplicationHandler<Event> for Processor {
 
         if is_redraw {
             window_context.draw(&mut self.scheduler);
+        }
+
+        // Show the tray icon once a window has been minimized to it.
+        #[cfg(windows)]
+        if self.tray.is_none()
+            && self.config.window.minimize_to_tray
+            && window_context.display.window.is_minimized()
+        {
+            self.ensure_tray();
         }
     }
 
@@ -395,9 +402,6 @@ impl ApplicationHandler<Event> for Processor {
                     }
                 }
 
-                // Create the tray if the config just enabled it.
-                #[cfg(windows)]
-                self.ensure_tray();
             },
             // Create a new terminal window.
             (EventType::CreateWindow(options), _) => {
@@ -418,10 +422,6 @@ impl ApplicationHandler<Event> for Processor {
                 } else if let Err(err) = self.create_window(event_loop, options) {
                     error!("Could not open window: {err:?}");
                 }
-
-                // Create the tray if the config requested it.
-                #[cfg(windows)]
-                self.ensure_tray();
             },
             // Shutdown all windows.
             #[cfg(unix)]
