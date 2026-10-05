@@ -2,7 +2,7 @@
 
 use std::ops::{Index, IndexMut, Range};
 use std::sync::Arc;
-use std::{cmp, mem, ptr, slice, str};
+use std::{cmp, mem, slice, str};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -240,10 +240,7 @@ impl TermDamageState {
         self.full = true;
 
         self.lines.clear();
-        self.lines.reserve(num_lines);
-        for line in 0..num_lines {
-            self.lines.push(LineDamageBounds::undamaged(line, num_cols));
-        }
+        self.lines.extend((0..num_lines).map(|line| LineDamageBounds::undamaged(line, num_cols)));
     }
 
     /// Damage point inside of the viewport.
@@ -565,7 +562,12 @@ impl<T> Term<T> {
             res += &self.line_to_string(line, start_col..end_col, line == end.line);
         }
 
-        res.strip_suffix('\n').map(str::to_owned).unwrap_or(res)
+        // Remove the trailing newline of the last line.
+        if res.ends_with('\n') {
+            res.pop();
+        }
+
+        res
     }
 
     /// Convert a single line in the grid to a String.
@@ -1096,9 +1098,7 @@ impl<T: EventListener> Handler for Term<T> {
             let col = self.grid.cursor.point.column;
             let row = &mut self.grid[line][..];
 
-            for col in (col.0..(columns - width)).rev() {
-                row.swap(col + width, col);
-            }
+            row[col.0..columns].rotate_right(width);
         }
 
         if width == 1 {
@@ -1196,7 +1196,7 @@ impl<T: EventListener> Handler for Term<T> {
         let num_cells = self.columns() - destination;
 
         let line = cursor.point.line;
-        self.damage.damage_line(line.0 as usize, 0, self.columns() - 1);
+        self.damage.damage_line(line.0 as usize, source.0, self.columns() - 1);
 
         let row = &mut self.grid[line][..];
 
@@ -1204,8 +1204,7 @@ impl<T: EventListener> Handler for Term<T> {
             row.swap(destination + offset, source.0 + offset);
         }
 
-        // Cells were just moved out toward the end of the line;
-        // fill in between source and dest with blanks.
+        // Fill in between source and dest with blanks.
         for cell in &mut row[source.0..destination] {
             *cell = bg.into();
         }
@@ -1293,7 +1292,7 @@ impl<T: EventListener> Handler for Term<T> {
         trace!("Pushing `{mode:?}` keyboard mode into the stack");
 
         if self.keyboard_mode_stack.len() >= KEYBOARD_MODE_STACK_MAX_DEPTH {
-            let removed = self.title_stack.remove(0);
+            let removed = self.keyboard_mode_stack.remove(0);
             trace!(
                 "Removing '{removed:?}' from bottom of keyboard mode stack that exceeds its \
                  maximum depth"
@@ -1548,7 +1547,7 @@ impl<T: EventListener> Handler for Term<T> {
         let num_cells = columns - end;
 
         let line = cursor.point.line;
-        self.damage.damage_line(line.0 as usize, 0, self.columns() - 1);
+        self.damage.damage_line(line.0 as usize, start.min(columns - count), self.columns() - 1);
         let row = &mut self.grid[line][..];
 
         for offset in 0..num_cells {
@@ -2329,9 +2328,7 @@ impl TabStops {
     /// Remove all tabstops.
     #[inline]
     fn clear_all(&mut self) {
-        unsafe {
-            ptr::write_bytes(self.tabs.as_mut_ptr(), 0, self.tabs.len());
-        }
+        self.tabs.fill(false);
     }
 
     /// Increase tabstop capacity.

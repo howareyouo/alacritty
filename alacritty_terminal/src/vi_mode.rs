@@ -7,7 +7,7 @@ use crate::event::EventListener;
 use crate::grid::{Dimensions, GridCell};
 use crate::index::{Boundary, Column, Direction, Line, Point, Side};
 use crate::term::Term;
-use crate::term::cell::Flags;
+use crate::term::cell::{Cell, Flags};
 
 /// Possible vi mode motion movements.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -368,16 +368,20 @@ fn word<T: EventListener>(
 
 /// Find first non-empty cell in line.
 fn first_occupied_in_line<T>(term: &Term<T>, line: Line) -> Option<Point> {
+    let grid_line = &term.grid()[line];
+
     (0..term.columns())
-        .map(|col| Point::new(line, Column(col)))
-        .find(|&point| !is_space(term, point))
+        .find(|&col| !is_space_cell(&grid_line[Column(col)]))
+        .map(|column| Point::new(line, Column(column)))
 }
 
 /// Find last non-empty cell in line.
 fn last_occupied_in_line<T>(term: &Term<T>, line: Line) -> Option<Point> {
+    let grid_line = &term.grid()[line];
+
     (0..term.columns())
-        .map(|col| Point::new(line, Column(col)))
-        .rfind(|&point| !is_space(term, point))
+        .rfind(|&col| !is_space_cell(&grid_line[Column(col)]))
+        .map(|column| Point::new(line, Column(column)))
 }
 
 /// Advance point based on direction.
@@ -389,11 +393,15 @@ fn advance<T>(term: &Term<T>, point: Point, direction: Direction) -> Point {
     }
 }
 
-/// Check if cell at point contains whitespace.
-fn is_space<T>(term: &Term<T>, point: Point) -> bool {
-    let cell = &term.grid()[point.line][point.column];
+/// Check if cell contains whitespace.
+fn is_space_cell(cell: &Cell) -> bool {
     !cell.flags().intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)
         && (cell.c == ' ' || cell.c == '\t')
+}
+
+/// Check if cell at point contains whitespace.
+fn is_space<T>(term: &Term<T>, point: Point) -> bool {
+    is_space_cell(&term.grid()[point.line][point.column])
 }
 
 /// Check if the cell at a point contains the WRAPLINE flag.

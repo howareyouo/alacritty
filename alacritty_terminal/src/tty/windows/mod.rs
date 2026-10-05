@@ -50,6 +50,18 @@ impl Pty {
     pub fn child_watcher(&self) -> &ChildExitWatcher {
         &self.child_watcher
     }
+
+    /// Register all PTY resources with `poll`.
+    fn register_all(
+        &mut self,
+        poll: &Arc<Poller>,
+        interest: polling::Event,
+        poll_opts: polling::PollMode,
+    ) {
+        self.conin.register(poll, with_key(interest, PTY_READ_WRITE_TOKEN), poll_opts);
+        self.conout.register(poll, with_key(interest, PTY_READ_WRITE_TOKEN), poll_opts);
+        self.child_watcher.register(poll, with_key(interest, PTY_CHILD_EVENT_TOKEN));
+    }
 }
 
 fn with_key(mut event: Event, key: usize) -> Event {
@@ -68,9 +80,7 @@ impl EventedReadWrite for Pty {
         interest: polling::Event,
         poll_opts: polling::PollMode,
     ) -> io::Result<()> {
-        self.conin.register(poll, with_key(interest, PTY_READ_WRITE_TOKEN), poll_opts);
-        self.conout.register(poll, with_key(interest, PTY_READ_WRITE_TOKEN), poll_opts);
-        self.child_watcher.register(poll, with_key(interest, PTY_CHILD_EVENT_TOKEN));
+        self.register_all(poll, interest, poll_opts);
 
         Ok(())
     }
@@ -82,9 +92,7 @@ impl EventedReadWrite for Pty {
         interest: polling::Event,
         poll_opts: polling::PollMode,
     ) -> io::Result<()> {
-        self.conin.register(poll, with_key(interest, PTY_READ_WRITE_TOKEN), poll_opts);
-        self.conout.register(poll, with_key(interest, PTY_READ_WRITE_TOKEN), poll_opts);
-        self.child_watcher.register(poll, with_key(interest, PTY_CHILD_EVENT_TOKEN));
+        self.register_all(poll, interest, poll_opts);
 
         Ok(())
     }

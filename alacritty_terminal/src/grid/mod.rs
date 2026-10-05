@@ -273,18 +273,6 @@ impl<T: GridCell + Default + PartialEq> Grid<T> {
             // Create scrollback for the new lines.
             self.increase_scroll_limit(positions);
 
-            // Swap the lines fixed at the top to their target positions after rotation.
-            //
-            // Since we've made sure that the rotation will never rotate away the entire region, we
-            // know that the position of the fixed lines before the rotation must already be
-            // visible.
-            //
-            // We need to start from the bottom, to make sure the fixed lines aren't swapped with
-            // each other.
-            for i in (0..region.start.0).rev().map(Line::from) {
-                self.raw.swap(i, i + positions);
-            }
-
             // Rotate the entire line buffer upward.
             self.raw.rotate(-(positions as isize));
 
