@@ -498,9 +498,14 @@ impl WindowContext {
         self.display.window.id()
     }
 
-    /// Close the window by terminating its terminal.
+    /// Close the window by releasing it and terminating its terminal.
+    ///
+    /// This is the single close ritual shared by all close paths, e.g. the
+    /// tray menu or quitting from the tray.
     #[cfg(windows)]
-    pub fn close(&self) {
+    pub fn close(&mut self) {
+        // The window is being closed, so no need to hold it open.
+        self.display.window.hold = false;
         self.terminal.lock().exit();
     }
 

@@ -1,11 +1,10 @@
 //! System tray icon support for Windows.
 //!
 //! When `window.minimize_to_tray` is enabled, minimizing a window will hide it
-//! instead, and an icon in the system tray is used to restore the hidden
-//! windows or quit the application.
+//! instead, and an icon in the system tray is used to toggle the visibility of
+//! the windows or quit the application.
 
 use std::io::Cursor;
-use std::sync::Mutex;
 
 use log::warn;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
@@ -24,6 +23,8 @@ const QUIT_MENU_ID: &str = "alacritty-quit";
 /// Actions triggered from the system tray icon.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayAction {
+    /// Toggle the visibility of all windows.
+    Toggle,
     /// Show all hidden windows.
     Show,
     /// Close all windows and quit the application.
@@ -51,8 +52,8 @@ pub fn create_tray(proxy: EventLoopProxy<Event>) -> Option<TrayIcon> {
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(&quit_item);
 
-    // Restore the windows on left clicks, without opening the context menu.
-    let tray_proxy = Mutex::new(proxy.clone());
+    // Toggle the window visibility on left clicks, without opening the context menu.
+    let tray_proxy = proxy.clone();
     TrayIconEvent::set_event_handler(Some(move |event| match event {
         TrayIconEvent::Click {
             button: MouseButton::Left,
@@ -60,26 +61,20 @@ pub fn create_tray(proxy: EventLoopProxy<Event>) -> Option<TrayIcon> {
             ..
         }
         | TrayIconEvent::DoubleClick { button: MouseButton::Left, .. } => {
-            let _ = tray_proxy
-                .lock()
-                .unwrap()
-                .send_event(Event::new(EventType::Tray(TrayAction::Show), None));
+            let _ = tray_proxy.send_event(Event::new(EventType::Tray(TrayAction::Toggle), None));
         },
         _ => (),
     }));
 
     // Dispatch the tray menu actions through the event loop as well.
-    let menu_proxy = Mutex::new(proxy);
+    let menu_proxy = proxy;
     MenuEvent::set_event_handler(Some(Box::new(move |event: MenuEvent| {
         let action = match event.id.as_ref() {
             SHOW_MENU_ID => TrayAction::Show,
             QUIT_MENU_ID => TrayAction::Quit,
             _ => return,
         };
-        let _ = menu_proxy
-            .lock()
-            .unwrap()
-            .send_event(Event::new(EventType::Tray(action), None));
+        let _ = menu_proxy.send_event(Event::new(EventType::Tray(action), None));
     })));
 
     match TrayIconBuilder::new()
@@ -109,5 +104,6 @@ fn load_icon() -> Result<Icon, Box<dyn std::error::Error>> {
     let info = reader.next_frame(&mut buf)?;
 
     let data_len = info.line_size * info.height as usize;
-    Ok(Icon::from_rgba(buf[..data_len].to_vec(), info.width, info.height)?)
+    buf.truncate(data_len);
+    Ok(Icon::from_rgba(buf, info.width, info.height)?)
 }

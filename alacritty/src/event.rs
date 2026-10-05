@@ -156,18 +156,6 @@ impl Processor {
         }
     }
 
-    /// Create the tray icon if `window.minimize_to_tray` is enabled.
-    ///
-    /// The tray is created lazily when a window is first minimized to it, so
-    /// that no icon is shown until hiding a window is actually requested. It
-    /// is only created once and stays alive afterwards.
-    #[cfg(windows)]
-    fn ensure_tray(&mut self) {
-        if self.tray.is_none() && self.config.window.minimize_to_tray {
-            self.tray = crate::tray::create_tray(self.proxy.clone());
-        }
-    }
-
     /// Create initial window and load GL platform.
     ///
     /// This will initialize the OpenGL Api and pick a config that
@@ -291,6 +279,10 @@ impl ApplicationHandler<Event> for Processor {
         };
 
         let is_redraw = matches!(event, WindowEvent::RedrawRequested);
+        // Only the resize to 0x0 is the actual minimize signal on Windows.
+        #[cfg(windows)]
+        let is_minimize_signal =
+            matches!(event, WindowEvent::Resized(_) | WindowEvent::Occluded(_));
 
         window_context.handle_event(
             #[cfg(target_os = "macos")]
@@ -305,13 +297,22 @@ impl ApplicationHandler<Event> for Processor {
             window_context.draw(&mut self.scheduler);
         }
 
-        // Show the tray icon once a window has been minimized to it.
+        // Create the tray icon once a window has been minimized to it.
         #[cfg(windows)]
-        if self.tray.is_none()
-            && self.config.window.minimize_to_tray
-            && window_context.display.window.is_minimized()
-        {
-            self.ensure_tray();
+        if self.tray.is_none() && is_minimize_signal {
+            let (minimized, visible) = {
+                let window = &window_context.display.window;
+                (window.is_minimized(), window.visible())
+            };
+
+            if self.config.window.minimize_to_tray && minimized {
+                // If the tray icon could not be created, the hidden window would
+                // be unreachable; restore it so it stays available in the taskbar.
+                self.tray = crate::tray::create_tray(self.proxy.clone());
+                if self.tray.is_none() && !visible {
+                    window_context.display.window.restore_from_tray();
+                }
+            }
         }
     }
 
@@ -386,6 +387,12 @@ impl ApplicationHandler<Event> for Processor {
                 if let Ok(config) = config::reload(&path, &mut self.cli_options) {
                     self.config = Rc::new(config);
 
+                    // Remove the tray icon if the new config no longer hides to it.
+                    #[cfg(windows)]
+                    if !self.config.window.minimize_to_tray {
+                        self.tray = None;
+                    }
+
                     // Restart config monitor if imports changed.
                     if let Some(monitor) = self.config_monitor.take() {
                         let paths = &self.config.config_paths;
@@ -426,6 +433,19 @@ impl ApplicationHandler<Event> for Processor {
             // Shutdown all windows.
             #[cfg(unix)]
             (EventType::Shutdown, _) => event_loop.exit(),
+            // Toggle the visibility of all windows from the tray icon.
+            #[cfg(windows)]
+            (EventType::Tray(TrayAction::Toggle), _) => {
+                let all_hidden =
+                    self.windows.values().all(|wc| !wc.display.window.visible());
+                for window_context in self.windows.values_mut() {
+                    if all_hidden {
+                        window_context.display.window.restore_from_tray();
+                    } else {
+                        window_context.display.window.set_visible(false);
+                    }
+                }
+            },
             // Restore all windows hidden to the tray.
             #[cfg(windows)]
             (EventType::Tray(TrayAction::Show), _) => {
@@ -447,7 +467,6 @@ impl ApplicationHandler<Event> for Processor {
                 }
 
                 for window_context in self.windows.values_mut() {
-                    window_context.display.window.hold = false;
                     window_context.close();
                 }
             },

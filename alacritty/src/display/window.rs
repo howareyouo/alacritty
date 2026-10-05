@@ -255,7 +255,7 @@ impl Window {
     #[cfg(windows)]
     #[inline]
     pub fn restore_from_tray(&self) {
-        if self.window.is_minimized() == Some(true) {
+        if self.is_minimized() {
             self.window.set_minimized(false);
         }
         self.window.set_visible(true);
