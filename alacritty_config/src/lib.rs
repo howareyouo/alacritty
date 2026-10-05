@@ -107,7 +107,7 @@ mod tests {
         assert_eq!(subject, Some(ReplaceOption { a: 1, b: 2 }));
 
         // Reset to `None` using the "none" sentinel.
-        let value: Value = toml::from_str("\"none\"").unwrap();
+        let value: Value = Value::String(String::from("none"));
         SerdeReplace::replace(&mut subject, value).unwrap();
 
         assert_eq!(subject, None);
